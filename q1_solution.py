@@ -14,7 +14,9 @@ from scipy.optimize import Bounds, LinearConstraint, milp
 from scipy.sparse import csr_matrix
 from openpyxl import Workbook, load_workbook
 
-G = 9.81
+import common_physics as physics
+
+G = physics.GRAVITY
 EPS = 1e-8
 
 
@@ -49,40 +51,21 @@ def load_data(root):
 
 
 def leg_geometry(nodes, dem):
-    z = dem['dem']
-    lons = dem['longitude'].ravel()
-    lats = dem['latitude'].ravel()
-    missing = float(dem['nodata'].ravel()[0])
     center = nodes['O01']
     geometry = {}
     for sid, dest in nodes.items():
         if sid == 'O01':
             continue
-        lon1, lon2 = center['lon'], dest['lon']
-        lat1, lat2 = center['lat'], dest['lat']
-        # 密集取样，每段小于半个像元；包括沿线所有触及的近邻像元。
-        n = int(max(abs(lon2-lon1)/(lons[1]-lons[0]),
-                    abs(lat2-lat1)/abs(lats[1]-lats[0]))*8)+2
-        x = np.linspace(lon1, lon2, n)
-        y = np.linspace(lat1, lat2, n)
-        ix = np.clip(np.rint((x-lons[0])/(lons[1]-lons[0])).astype(int), 0, len(lons)-1)
-        iy = np.clip(np.rint((lats[0]-y)/(lats[0]-lats[1])).astype(int), 0, len(lats)-1)
-        vals = z[iy, ix]
-        if np.any(~np.isfinite(vals)) or np.any(vals == missing):
-            raise ValueError(f'{sid}: 航段经过 DEM 无效像元')
-        cruise = max(float(vals.max())+50, center['elev'], dest['elev']+30)
-        mean_lat = math.radians((lat1+lat2)/2)
-        # WGS84 局地测地距离，米
-        a = math.sin(math.radians(lat2-lat1)/2)**2 + math.cos(math.radians(lat1))*math.cos(math.radians(lat2))*math.sin(math.radians(lon2-lon1)/2)**2
-        distance = 6371008.8 * 2 * math.asin(math.sqrt(a))
-        geometry[sid] = (distance, cruise-center['elev'], cruise-dest['elev']-30,
-                         cruise-dest['elev']-30, cruise-center['elev'], cruise)
+        a = (center['lon'], center['lat'])
+        b = (dest['lon'], dest['lat'])
+        d, up, down, altitude = physics.leg_geometry(a,b,center['elev'],dest['elev']+30,dem)
+        geometry[sid] = (d,up,down,down,up,altitude)
     return geometry
 
 
 def route(model, geom, payload):
     d, up1, down1, up2, down2, _ = geom
-    effective = model['r0']-(model['r0']-model['rfull'])*payload/model['cap']
+    effective = physics.effective_range(model, payload)
     energy = model['battery']*d/effective + (model['empty']+payload)*G*up1/(3.6e6*model['eta'])
     energy += model['battery']*d/model['r0'] + model['empty']*G*up2/(3.6e6*model['eta'])
     flight = 2*d/model['speed']+(up1+up2)/model['climb']+(down1+down2)/model['descent']
@@ -166,8 +149,8 @@ def compute(models,nodes,boxes,geometry,reserve):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--data',type=Path,default=Path('work'),help='解压后的资料根目录')
-    parser.add_argument('--out',type=Path,default=Path('Q1_结果.xlsx'))
+    parser.add_argument('--data',type=Path,default=physics.DEFAULT_DATA,help='解压后的资料根目录')
+    parser.add_argument('--out',type=Path,default=physics.OUTPUT/'Q1_结果.xlsx')
     parser.add_argument('--reserves',type=float,nargs='+',default=[0.1,0.2,0.3],help='敏感性分析余量比例，例如 0.1 0.2 0.3')
     args=parser.parse_args()
     temp=None

@@ -12,6 +12,7 @@ from openpyxl import Workbook,load_workbook
 import q1_solution as q1
 import q2_solution as q2
 import q3_solution as q3
+import common_physics as physics
 
 KINDS=['A无人机','B无人机','C无人机','A电池','B电池','C电池','中继无人机','中继能源组件']
 
@@ -55,7 +56,7 @@ def interval_minimum(intervals):
     events=[]
     for start,end in intervals:
         if end<=start:raise ValueError((start,end))
-        events.extend([(start,1),(end,-1)])
+        events.extend([(physics.time_tick(start),1),(physics.time_tick(end),-1)])
     used=peak=0
     for at,change in sorted(events,key=lambda x:(x[0],x[1])):
         used+=change;peak=max(peak,used)
@@ -195,9 +196,9 @@ def run(root,q3path,out):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--data',type=Path,default=Path('work'))
-    p.add_argument('--q3',type=Path,default=Path('Q3_结果.xlsx'))
-    p.add_argument('--out',type=Path,default=Path('Q4_结果.xlsx'))
+    p.add_argument('--data',type=Path,default=physics.DEFAULT_DATA)
+    p.add_argument('--q3',type=Path,default=physics.OUTPUT/'Q3_结果.xlsx')
+    p.add_argument('--out',type=Path,default=physics.OUTPUT/'Q4_结果.xlsx')
     args=p.parse_args()
     if args.data.suffix.lower()=='.zip':
         import tempfile,zipfile,shutil

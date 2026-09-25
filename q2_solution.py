@@ -10,6 +10,7 @@ import numpy as np
 from openpyxl import Workbook, load_workbook
 
 import q1_solution as q1
+import common_physics as physics
 
 TOL=1e-6
 
@@ -33,25 +34,15 @@ def get_inputs(root):
 
 
 def leg(nodes,mat,start,end,cache):
-    if (start,end) in cache:return cache[(start,end)]
+    if (start,end) in cache:
+        return cache[(start,end)]
     a,b=nodes[start],nodes[end]
-    data=mat['dem']; lons=mat['longitude'].ravel();lats=mat['latitude'].ravel()
-    count=int(max(abs(b['lon']-a['lon'])/abs(lons[1]-lons[0]),
-                  abs(b['lat']-a['lat'])/abs(lats[1]-lats[0]))*8)+2
-    xx=np.linspace(a['lon'],b['lon'],count);yy=np.linspace(a['lat'],b['lat'],count)
-    ix=np.clip(np.rint((xx-lons[0])/(lons[1]-lons[0])).astype(int),0,len(lons)-1)
-    iy=np.clip(np.rint((lats[0]-yy)/(lats[0]-lats[1])).astype(int),0,len(lats)-1)
-    vals=data[iy,ix]
-    if np.any(~np.isfinite(vals)) or np.any(vals==float(mat['nodata'].ravel()[0])):
-        raise ValueError(f'{start}->{end} 航段 DEM 无效')
-    aalt=a['elev']+(0 if start=='O01' else 30)
-    balt=b['elev']+(0 if end=='O01' else 30)
-    altitude=max(float(vals.max())+50,aalt,balt)
-    phi1,phi2=math.radians(a['lat']),math.radians(b['lat'])
-    x=math.sin((phi2-phi1)/2)**2+math.cos(phi1)*math.cos(phi2)*math.sin(math.radians(b['lon']-a['lon'])/2)**2
-    distance=2*6371008.8*math.asin(math.sqrt(x))
-    cache[(start,end)]=(distance,altitude-aalt,altitude-balt,altitude)
-    return cache[(start,end)]
+    result=physics.leg_geometry((a['lon'],a['lat']),(b['lon'],b['lat']),
+        a['elev']+(0 if start=='O01' else 30),
+        b['elev']+(0 if end=='O01' else 30),mat,
+        relay=(start=='H' or end=='H'))
+    cache[(start,end)]=result
+    return result
 
 
 def profile(model,route,ids,boxes,nodes,mat,cache):
@@ -65,7 +56,7 @@ def profile(model,route,ids,boxes,nodes,mat,cache):
     energy=0.;load=total_mass;last='O01';deliveries={};legs=[]
     for nxt in list(route)+['O01']:
         distance,up,down,alt=leg(nodes,mat,last,nxt,cache)
-        effective=model['r0']-(model['r0']-model['rfull'])*load/model['cap']
+        effective=physics.effective_range(model,load)
         e=model['battery']*distance/effective+(model['empty']+load)*q1.G*up/(3.6e6*model['eta'])
         dt=distance/model['speed']+up/model['climb']+down/model['descent']
         energy+=e;now+=dt
@@ -264,8 +255,8 @@ def output(path,service,boxes,models,fleet,batteries):
 
 def main():
     a=argparse.ArgumentParser(description=__doc__)
-    a.add_argument('--data',type=Path,default=Path('work'))
-    a.add_argument('--out',type=Path,default=Path('Q2_结果.xlsx'))
+    a.add_argument('--data',type=Path,default=physics.DEFAULT_DATA)
+    a.add_argument('--out',type=Path,default=physics.OUTPUT/'Q2_结果.xlsx')
     args=a.parse_args()
     if args.data.suffix.lower()=='.zip':
         import tempfile,zipfile,shutil
