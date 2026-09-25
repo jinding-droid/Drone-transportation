@@ -177,7 +177,8 @@ class Q2Model:
                 batches.extend(service_batches)
         return [tuple(sorted(batch)) for batch in batches]
 
-    def construct_batches(self, rng: random.Random) -> list[tuple[str, ...]]:
+    def construct_batches(self, rng: random.Random,
+                          isolate_hard: bool = False) -> list[tuple[str, ...]]:
         """随机化顺序插入：只要能放入已有架次就不新开架次。"""
         hard_by_service: dict[str, list[str]] = {}
         remaining = []
@@ -208,11 +209,30 @@ class Q2Model:
                 if not variants:
                     continue
                 # 向首批骨架填充普通物资时，不牺牲其原有机型选择，避免挤占 C 型资源。
-                if i < len(protected_types):
+                if isolate_hard and i < len(protected_types):
                     trial_types = {v.aircraft_type for v in variants}
                     if protected_types[i] not in trial_types:
                         continue
                     variants = tuple(v for v in variants if v.aircraft_type == protected_types[i])
+                    hard_ids = [x for x in batch if hard_deadline(self.box_by_id[x]) is not None]
+                    if any(
+                        any(
+                            v.delivery_offsets()[x]
+                            > hard_deadline(self.box_by_id[x]) + 1e-7
+                            for x in hard_ids
+                        )
+                        for v in variants
+                    ):
+                        variants = tuple(
+                            v for v in variants
+                            if all(
+                                v.delivery_offsets()[x]
+                                <= hard_deadline(self.box_by_id[x]) + 1e-7
+                                for x in hard_ids
+                            )
+                        )
+                    if not variants:
+                        continue
                 existing_stops = {self.box_by_id[x]["service"] for x in batch}
                 new_stop_penalty = 0.8 if box["service"] not in existing_stops else 0.0
                 best = min(variants, key=lambda v: v.energy_kwh + v.duration_s / 10000.0)
@@ -387,10 +407,8 @@ def solve(iterations: int = 4800, seed: int = 20260926,
     for it in range(iterations):
         rng = random.Random(master.randrange(2**63))
         if objective == "ontime":
-            batches = model.construct_service_batches(rng)
-            batches = model.improve_batches(
-                batches, rng, allow_cross_service=False
-            )
+            batches = model.construct_batches(rng, isolate_hard=True)
+            batches = model.improve_batches(batches, rng)
         else:
             batches = model.construct_batches(rng)
             batches = model.improve_batches(batches, rng)
