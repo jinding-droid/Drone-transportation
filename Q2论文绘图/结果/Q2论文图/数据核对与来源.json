@@ -1,0 +1,32 @@
+{
+  "repository": "https://github.com/jinding-droid/Drone-transportation",
+  "reference_commit": "9b407179971ab49327fc2d23b70ac620ae1c0856",
+  "note": "参考提交为交付版本，实际输入以下列哈希为准；校验为CSV一致性和资源时间互斥检查，未重算物理模型。",
+  "inputs": {
+    "Q2_运输架次.csv": "f0415963e077befef6d410fe3e917ff5be0c3cbd32f6423c554dd12341995b49",
+    "Q2_逐箱交付.csv": "9e6fe5b76f9e78e3f7ac0c14fa71bdcd73423cc95679c34a5efff8b67f62b14f",
+    "Q2_电池资源台账.csv": "17fd78d163af60aaa5a3e1323a45fec8772ab7d106855e81db37d4b9802ced6f",
+    "Q2_指标汇总.csv": "fb723fdd66347cf83775f97e9276cc1ae56a2159949150f5f06c0bd15466d379",
+    "Q2_方案对比.csv": "6135269f76ecd5aa0054bcd1c90020d39ca6ccc951868950e97656188c7bed21"
+  },
+  "summary": {
+    "sorties": 22,
+    "boxes": 80,
+    "models": {
+      "B": 6,
+      "A": 10,
+      "C": 6
+    },
+    "drones": 8,
+    "batteries": 14,
+    "multi_stop_sorties": 6,
+    "hard_late": 0,
+    "all_expected_late": 0,
+    "published_makespan_s": 5830.8212,
+    "published_energy_kwh": 67.4469,
+    "last_delivery_s": 5425.262,
+    "last_charge_s": 8379.684
+  },
+  "font": "Microsoft YaHei",
+  "dpi": 600
+}

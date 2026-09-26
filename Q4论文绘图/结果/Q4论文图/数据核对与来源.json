@@ -1,0 +1,63 @@
+{
+  "repository": "https://github.com/jinding-droid/Drone-transportation",
+  "reference_commit": "9b407179971ab49327fc2d23b70ac620ae1c0856",
+  "inputs_sha256": {
+    "Q4_分区配置.csv": "133eec2ec8243a824b3a164caaa60421adf2a7ad42cc178f27314410cbb22426",
+    "Q4_方案比较.csv": "e329eba62ffc20aa6702fa9bb0fdd7ebdebf8794d00c985b371fa61f05571200",
+    "Q4_input_manifest.json": "d6d83e46ccad03489fb19ac9f8ec6c19fef52dc27e6ecc18a252634eec0f0092",
+    "Q3_运输架次.csv": "0556d870bf46659c0080b858e7f2a62e5ce7e76d0d8c8219f87ac82e5520c6e4",
+    "Q3_逐箱交付.csv": "7b14a4bae2843009fa75b60b2e5386642dc173fc8c8657ad3151a0faa8ce292e",
+    "Q3_中继架次.csv": "8008f84bc1415a30198f67282b687a9189f70e8efe79d92090b83db8cb443f47",
+    "Q3_通信保障.csv": "e254a6bbb758e18f7be397cc642d9f392510865f16eecd1e5c5e12bdf8cd085d",
+    "Q3_指标汇总.csv": "21ac1b4161dea38fc1ec767db4f5d3661d5c351fe60e7510fdcda9217cf11a9d"
+  },
+  "nodes_sha256": "7bd30d359a183d530e078b90d1d1dc7fd2a3b8b576ad63ec63a7390bdc469b13",
+  "summary": {
+    "2": {
+      "总配置": 34,
+      "资源总缺口": 6,
+      "资源总冗余": 2,
+      "工作量CV": 0.026882098037094366,
+      "工作量s": [
+        29844.079999999998,
+        31492.948
+      ],
+      "货箱数": [
+        49,
+        31
+      ],
+      "运输架次数": [
+        11,
+        11
+      ],
+      "独立复制中继后的总能耗kWh": 71.078013
+    },
+    "3": {
+      "总配置": 39,
+      "资源总缺口": 10,
+      "资源总冗余": 1,
+      "工作量CV": 0.08561502660093576,
+      "工作量s": [
+        22791.101,
+        24197.998,
+        19648.754
+      ],
+      "货箱数": [
+        40,
+        20,
+        20
+      ],
+      "运输架次数": [
+        9,
+        7,
+        6
+      ],
+      "独立复制中继后的总能耗kWh": 72.59567
+    }
+  },
+  "balance_cv_limit": 0.1,
+  "relay_policy": "Replicate each required full Q3 relay interval independently per group.",
+  "font": "Microsoft YaHei",
+  "dpi": 600,
+  "limitations": "核验输入哈希、分组继承、工作量及库存算术，未重算含充电的峰值配置或重新证明优化最优性。节点为近似平面示意；资源单位合计非经济成本。"
+}

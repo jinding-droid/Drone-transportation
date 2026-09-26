@@ -1,0 +1,43 @@
+{
+  "source_repository": "https://github.com/jinding-droid/Drone-transportation",
+  "reference_commit": "9b407179971ab49327fc2d23b70ac620ae1c0856",
+  "note": "reference_commit为交付时的参考版本；本次实际输入以以下SHA256为准。只核对表间一致性，未重新证明物理模型。",
+  "inputs": {
+    "Q1_最大安全载荷.csv": {
+      "path": "C:\\Users\\86130\\Desktop\\D题完整资料\\结果\\Q1论文绘图\\结果\\Q1_最大安全载荷.csv",
+      "sha256": "ac908442a421ddf0fcc341bf685ca7ba8122a4138967362586e868a9d1eed43c"
+    },
+    "Q1_机型对比.csv": {
+      "path": "C:\\Users\\86130\\Desktop\\D题完整资料\\结果\\Q1论文绘图\\结果\\Q1_机型对比.csv",
+      "sha256": "4c3052602555a74f58184f6988c7d14dbde527243998f57379080481d73e9fdf"
+    },
+    "Q1_组批方案.csv": {
+      "path": "C:\\Users\\86130\\Desktop\\D题完整资料\\结果\\Q1论文绘图\\结果\\Q1_组批方案.csv",
+      "sha256": "8f52d9305d38806f8364b417a0d6b4350dfcea1f7e9a28f186286313172c73b6"
+    },
+    "Q1_安全余量灵敏度.csv": {
+      "path": "C:\\Users\\86130\\Desktop\\D题完整资料\\结果\\Q1论文绘图\\结果\\Q1_安全余量灵敏度.csv",
+      "sha256": "3ce8e014b86d6d8c83557d42da2601872850aa60713ea683fe9cf9adc3d429c4"
+    },
+    "Q1_全局方案灵敏度.csv": {
+      "path": "C:\\Users\\86130\\Desktop\\D题完整资料\\结果\\Q1论文绘图\\结果\\Q1_全局方案灵敏度.csv",
+      "sha256": "94fafa59b016edbd459b7b90805388fc11d59898b135ad75ba9781394baf021c"
+    }
+  },
+  "font": "Microsoft YaHei",
+  "dpi": 600,
+  "validation": {
+    "sorties": 18,
+    "boxes": 80,
+    "mass_kg": 758.0,
+    "volume_m3": 2.011,
+    "model_counts": {
+      "C": 9,
+      "B": 9
+    },
+    "energy_sum_rounded_rows_kwh": 59.2401,
+    "cumulative_time_sum_rounded_rows_s": 32798.5,
+    "published_energy_kwh": 59.2403,
+    "published_cumulative_time_s": 32798.5
+  }
+}
