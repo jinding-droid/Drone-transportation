@@ -1,0 +1,99 @@
+\documentclass[UTF8,a4paper,zihao=-4]{ctexart}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs,longtable,array}
+\usepackage{graphicx}
+\usepackage[numbers,square]{natbib}
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{fancyhdr}
+\usepackage[colorlinks=true,linkcolor=black,urlcolor=blue]{hyperref}
+
+\ctexset{
+  section={format=\centering\heiti\zihao{4},name={},number={},aftername=},
+  subsection={format=\heiti\zihao{-4},name={},number={\thesection.\arabic{subsection}},aftername=\quad},
+  subsubsection={format=\heiti\zihao{-4},name={},number={\thesubsection.\arabic{subsubsection}},aftername=\quad}
+}
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0pt}
+\linespread{1.0}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+\hypersetup{
+  pdftitle={山区洪涝灾害下无人机运输与通信协同优化},
+  pdfauthor={},
+  pdfsubject={D题数学建模论文},
+  pdfkeywords={无人机运输；多架次调度；通信中继；资源分区}
+}
+
+\newcommand{\papertitle}{山区洪涝灾害下无人机运输与通信协同优化}
+
+\begin{document}
+
+% 独立封面承载参赛身份信息；正文、摘要及PDF元数据保持匿名。
+\thispagestyle{empty}
+\begin{center}
+  {\zihao{3}\heiti 中国研究生创新实践系列大赛\par}
+  \vspace{0.5em}
+  {\zihao{3}\heiti “华为杯”第二十三届中国研究生数学建模竞赛\par}
+  \vspace{4em}
+  {\zihao{2}\heiti 竞赛论文\par}
+  \vspace{3em}
+  {\zihao{3}\heiti \papertitle\par}
+\end{center}
+\vfill
+\begin{center}
+  \zihao{-3}
+  \renewcommand{\arraystretch}{1.8}
+  \begin{tabular}{rl}
+    队伍编号：& 26106980342 \\
+    队伍名称：& 哦 \\
+    单位名称：& 西安交通大学 \\
+    队员：& 丁金、祁迹昂、孙家兴
+  \end{tabular}
+\end{center}
+\vfill
+\clearpage
+
+% 竞赛要求从摘要页开始连续编页码，摘要页与正文均不出现身份信息。
+\pagenumbering{arabic}
+\setcounter{page}{1}
+\thispagestyle{fancy}
+\begin{center}
+  {\zihao{3}\heiti \papertitle\par}
+  \vspace{1em}
+  {\zihao{4}\heiti 摘要\par}
+\end{center}
+\vspace{0.5em}
+\noindent\zihao{-4}\songti
+针对山区洪涝灾害下应急物资运输、有限机队与电池周转以及通信中继保障问题，本文建立由单点运输能力评估、多架次联合调度、通信保障优化和灾后任务分区构成的递进模型。问题一依据地形剖面、载荷修正航程和爬升能耗计算安全载荷，并以动态规划精确组批；问题二构造跨服务区候选架次池，将货箱覆盖、机型选择、访问顺序、无人机占用和电池充电周转联合求解；问题三在运输调度基础上联合优化中继驻守与服务窗口，并校验链路可用性；问题四冻结问题三任务，按运输架次继承关系划分服务区，比较两组与三组方案的峰值资源和工作量均衡。
+
+问题一得到18个运输架次的精确组批方案，达到由三个超载服务区给出的架次数下界；默认20\%返航安全余量下总能耗为59.2403~kWh。问题二在80箱全部按期交付、硬时限及期望时刻迟到均为零的条件下，得到22个架次，最晚返场时间5830.8212~s，总能耗67.4469~kWh。问题三在该运输基线上重新调整两个医疗箱的批次归属及中继点，得到22个运输架次、3个中继架次，联合完成时间6926.1512~s，总能耗68.5635~kWh；独立离散采样未发现通信中断，但不将采样结果表述为连续时间严格证明。问题四穷举11个不可拆分单元的两组与三组划分，均得到工作量变异系数不超过0.10的方案；在完整中继任务窗口按组独立复制的保守假设下，两组方案的工作量变异系数为0.0269，库存缺口为6个资源单位，优于三组方案的0.0856和10个资源单位。
+
+本文的主要特点是利用货箱类型聚合压缩组合搜索空间，并将多站运输、有限电池充电和中继实体周转纳入统一的事件驱动调度；对问题四则明确区分题面约束与保守资源核算假设，并对冻结输入下的候选分区作穷举比较。所得调度与分区均为所述模型和假设下的可行或最优结果，不据此宣称问题二至四的全局最优。
+
+\vspace{0.6em}
+\noindent{\heiti 关键词：}山区洪涝；无人机运输；多架次调度；电池周转；通信中继；任务分区
+\clearpage
+
+\input{chapters/q1}
+\input{chapters/q2}
+\input{chapters/q3}
+\input{chapters/q4}
+
+\begin{thebibliography}{2}
+\bibitem{zhang2021}
+J. Zhang, J. F. Campbell, D. C. Sweeney II, and A. C. Hupman,
+``Energy consumption models for delivery drones: A comparison and assessment,''
+\textit{Transportation Research Part D: Transport and Environment}, vol. 90,
+art. 102668, 2021, doi: 10.1016/j.trd.2020.102668.
+
+\bibitem{dorling2017}
+K. Dorling, J. Heinrichs, G. G. Messier, and S. Magierowski,
+``Vehicle routing problems for drone delivery,''
+\textit{IEEE Transactions on Systems, Man, and Cybernetics: Systems}, vol. 47,
+no. 1, pp. 70--85, Jan. 2017, doi: 10.1109/TSMC.2016.2582745.
+\end{thebibliography}
+
+\end{document}
