@@ -2,3 +2,7 @@
 __pycache__/
 *.pyc
 结果/*.tmp
+论文/build/
+.codex-tmp-q2-xlsx/
+~$*
+参考文献/*.pdf

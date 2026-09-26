@@ -25,6 +25,7 @@ from functools import lru_cache
 from core import (AircraftType, Segment, Terrain, build_all_segments, charge_time_s,
                   load_aircraft_types, load_boxes, load_dem, load_fleet, load_nodes,
                   segment_energy_kwh)
+from q1 import box_types, mixed_load_plan
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RESULT_DIR = os.path.join(ROOT, "结果")
@@ -33,6 +34,10 @@ PROTECTED_WAVE_TYPE = {
     "S001": "C", "S002": "C", "S006": "B", "S007": "B",
     "S010": "A", "S012": "A", "S013": "A", "S014": "A",
     "S003": "C", "S004": "C", "S008": "B", "S015": "A",
+}
+FIRST_WAVE_TYPE = {
+    "S001": "C", "S002": "B", "S006": "C", "S007": "B",
+    "S010": "A", "S012": "A", "S013": "A", "S014": "A",
 }
 
 
@@ -177,6 +182,60 @@ class Q2Model:
                 batches.extend(service_batches)
         return [tuple(sorted(batch)) for batch in batches]
 
+    def construct_fast_batches(self) -> list[tuple[str, ...]]:
+        """首波充分利用 8 架实体机，其余货箱先按单服务区精确组批。"""
+        used: set[str] = set()
+        batches: list[tuple[str, ...]] = []
+
+        for service, g in FIRST_WAVE_TYPE.items():
+            urgent = [b for b in self.boxes if b["service"] == service
+                      and hard_deadline(b) is not None and hard_deadline(b) <= 3600.0]
+            selected = sorted(b["id"] for b in urgent)
+            candidates = [b for b in self.boxes if b["service"] == service
+                          and b["id"] not in selected]
+            candidates.sort(key=lambda b: (b["expected_time_s"], -b["priority"], b["id"]))
+            for box in candidates:
+                trial = tuple(sorted(selected + [box["id"]]))
+                if any(v.aircraft_type == g for v in self.variants(trial)):
+                    selected.append(box["id"])
+            batch = tuple(sorted(selected))
+            batches.append(batch)
+            used.update(batch)
+
+        for service in sorted({b["service"] for b in self.boxes}):
+            remaining = [b for b in self.boxes
+                         if b["service"] == service and b["id"] not in used]
+            if not remaining:
+                continue
+            types, counts = box_types(remaining)
+            _, plan, _, _ = mixed_load_plan(
+                self.aircraft, self.segments[("O01", service)],
+                self.segments[(service, "O01")], counts, types
+            )
+            if plan is None:
+                raise RuntimeError(f"服务区 {service} 剩余货箱无法组批")
+            queues: dict[str, list[str]] = {}
+            for box_type in types:
+                ids = [b["id"] for b in remaining if b["kind"] == box_type.kind]
+                ids.sort(key=lambda bid: (
+                    hard_deadline(self.box_by_id[bid]) or math.inf,
+                    self.box_by_id[bid]["expected_time_s"], bid
+                ))
+                queues[box_type.key] = ids
+            for option in plan:
+                combo = option[1]
+                ids: list[str] = []
+                for index, box_type in enumerate(types):
+                    take = combo[index]
+                    ids.extend(queues[box_type.key][:take])
+                    del queues[box_type.key][:take]
+                batch = tuple(sorted(ids))
+                batches.append(batch)
+                used.update(batch)
+
+        assert used == set(self.box_by_id)
+        return batches
+
     def construct_batches(self, rng: random.Random,
                           isolate_hard: bool = False) -> list[tuple[str, ...]]:
         """随机化顺序插入：只要能放入已有架次就不新开架次。"""
@@ -300,11 +359,14 @@ class Q2Model:
             b: 0.0 for batteries in self.batteries_by_type.values() for b in batteries
         }
 
-        def urgency(batch: tuple[str, ...]) -> tuple[float, float]:
+        def urgency(batch: tuple[str, ...]) -> tuple:
             bs = [self.box_by_id[x] for x in batch]
             hard = [hard_deadline(b) for b in bs if hard_deadline(b) is not None]
-            due = min(hard) if hard else min(b["expected_time_s"] for b in bs)
-            return due + rng.uniform(-300.0, 300.0), -sum(b["priority"] for b in bs)
+            desired = min(b["expected_time_s"] for b in bs)
+            due = min([desired] + hard)
+            first_wave = any(d <= 3600.0 for d in hard)
+            return (0 if first_wave else 1, due,
+                    -sum(b["priority"] for b in bs), rng.random())
 
         pending = sorted(batches, key=urgency)
         scheduled: list[ScheduledTrip] = []
@@ -313,6 +375,15 @@ class Q2Model:
         for k, batch in enumerate(pending, 1):
             choices = []
             route_variants = self.variants(tuple(sorted(batch)))
+            first_wave_services = {
+                self.box_by_id[bid]["service"] for bid in batch
+                if hard_deadline(self.box_by_id[bid]) is not None
+                and hard_deadline(self.box_by_id[bid]) <= 3600.0
+            }
+            if len(first_wave_services) == 1:
+                required = FIRST_WAVE_TYPE[next(iter(first_wave_services))]
+                route_variants = tuple(v for v in route_variants
+                                       if v.aircraft_type == required)
             for variant in route_variants:
                 g = variant.aircraft_type
                 offsets = variant.delivery_offsets()
@@ -399,14 +470,33 @@ def ontime_score(metrics: dict) -> tuple:
     )
 
 
-def solve(iterations: int = 4800, seed: int = 20260926,
-          objective: str = "ontime") -> tuple[Q2Model, list[ScheduledTrip], dict]:
+def solve(iterations: int = 2400, seed: int = 20260926,
+          objective: str = "fast") -> tuple[Q2Model, list[ScheduledTrip], dict]:
     model = Q2Model()
     master = random.Random(seed)
     best = None
+    fast_candidates = None
+    if objective == "fast":
+        base = model.construct_fast_batches()
+        fast_candidates = [base]
+        for i, j in itertools.combinations(range(len(base)), 2):
+            merged = tuple(sorted(base[i] + base[j]))
+            stops = {model.box_by_id[x]["service"] for x in merged}
+            first_wave = any(
+                hard_deadline(model.box_by_id[x]) is not None
+                and hard_deadline(model.box_by_id[x]) <= 3600.0
+                for x in merged
+            )
+            if first_wave or len(stops) > 2 or not model.variants(merged):
+                continue
+            fast_candidates.append(
+                [b for k, b in enumerate(base) if k not in (i, j)] + [merged]
+            )
     for it in range(iterations):
         rng = random.Random(master.randrange(2**63))
-        if objective == "ontime":
+        if objective == "fast":
+            batches = fast_candidates[it % len(fast_candidates)]
+        elif objective == "ontime":
             batches = model.construct_batches(rng, isolate_hard=True)
             batches = model.improve_batches(batches, rng)
         else:
@@ -436,7 +526,7 @@ def solve(iterations: int = 4800, seed: int = 20260926,
                     scheduled, metrics = model.schedule(batches, rng)
         except RuntimeError:
             continue
-        if objective == "ontime":
+        if objective in ("ontime", "fast"):
             score = ontime_score(metrics)
         elif objective == "sorties":
             score = (metrics["hard_late_count"], metrics["hard_tardiness_s"],
@@ -512,7 +602,7 @@ def export_results(model: Q2Model, trips: list[ScheduledTrip], metrics: dict,
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description="求解问题二多点多架次调度")
-    parser.add_argument("--objective", choices=("ontime", "sorties"), default="ontime")
+    parser.add_argument("--objective", choices=("fast", "ontime", "sorties"), default="fast")
     parser.add_argument("--iterations", type=int, default=2400)
     parser.add_argument("--seed", type=int, default=20260926)
     parser.add_argument("--suffix", default="")

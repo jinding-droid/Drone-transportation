@@ -48,7 +48,7 @@ def main():
             ac = acs[g]
             limit = (1 - ac.reserve_ratio) * ac.battery_kwh
             lo, hi = 0.0, ac.max_payload_kg
-            f = lambda q: segment_energy_kwh(ac, q, s1) + segment_energy_kwh(ac, q, s2)
+            f = lambda q: segment_energy_kwh(ac, q, s1) + segment_energy_kwh(ac, 0.0, s2)
             if f(hi) <= limit:
                 q = hi
             else:
@@ -72,7 +72,7 @@ def main():
         q = ac.max_payload_kg
         t = mission_time_s(ac, [s1, s2], [0, ac.max_payload_kg and 0])
         t = ac.setup_time_s + s1.flight_time_s(ac) + s2.flight_time_s(ac)
-        e = segment_energy_kwh(ac, q, s1) + segment_energy_kwh(ac, q, s2)
+        e = segment_energy_kwh(ac, q, s1) + segment_energy_kwh(ac, 0.0, s2)
         print("  %s: 单程时间=%6.1f s 往返飞行=%6.1f s 能耗=%.4f kWh 余量上限=%.4f"
               % (g, s1.flight_time_s(ac), t, e, (1-ac.reserve_ratio)*ac.battery_kwh))
 

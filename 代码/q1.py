@@ -20,10 +20,9 @@ import sys
 from dataclasses import dataclass
 from functools import lru_cache
 
-from core import (AircraftType, Segment, build_segment, charge_time_s,
-                  equivalent_range_m, load_aircraft_types, load_boxes, load_dem,
-                  load_nodes, segment_energy_kwh, horizontal_energy_kwh,
-                  climb_energy_kwh, Terrain)
+from core import (AircraftType, Segment, build_segment, load_aircraft_types,
+                  load_boxes, load_dem, load_nodes, segment_energy_kwh,
+                  Terrain)
 
 TYPE_ORDER = ("MED", "WAT", "FOD", "HYG")
 KIND_TO_TYPE = {"医疗物资": "MED", "饮用水": "WAT", "应急食品": "FOD", "生活卫生用品": "HYG"}
@@ -55,7 +54,17 @@ def box_types(boxes: list[dict]) -> tuple[list[BoxType], dict[str, int]]:
 
 
 def round_trip_energy(ac: AircraftType, outbound: Segment, inbound: Segment, mass: float) -> float:
-    return segment_energy_kwh(ac, mass, outbound) + segment_energy_kwh(ac, mass, inbound)
+    """单点往返架次能耗：去程携带全部载荷，投送后返程空载。"""
+    return segment_energy_kwh(ac, mass, outbound) + segment_energy_kwh(ac, 0.0, inbound)
+
+
+def round_trip_time(ac: AircraftType, outbound: Segment, inbound: Segment, n_boxes: int) -> float:
+    """单点往返架次作业时间：准备 + 往返飞行 + 装载 + 交接。"""
+    flight = outbound.flight_time_s(ac) + inbound.flight_time_s(ac)
+    handling = (n_boxes * ac.load_time_per_box_s
+                + ac.handover_base_s
+                + n_boxes * ac.handover_per_box_s)
+    return ac.setup_time_s + flight + handling
 
 
 def effective_payload_cap(ac: AircraftType, outbound: Segment, inbound: Segment) -> float:
@@ -73,18 +82,20 @@ def effective_payload_cap(ac: AircraftType, outbound: Segment, inbound: Segment)
 
 
 def load_plan(ac: AircraftType, outbound: Segment, inbound: Segment, mass_cap: float,
-              counts: dict[str, int], types: list[BoxType], objective: str = "batches"):
+              counts: dict[str, int], types: list[BoxType], objective: str = "batches",
+              reserve_ratio: float | None = None):
     """精确求解单服务区装箱。
 
     objective:
       - "batches": 最小架次数（并列时最小化能耗）
       - "energy":  给定架次数下最小化能耗（先由 batches 得到最小架次数）
-    返回 (架次数, 每架次的类型计数列表, 该方案的能耗, 装载质量)
+    返回 (架次数, 每架次的类型计数列表, 该方案的能耗)
     """
     keys = [t.key for t in types]
     mass = {t.key: t.mass_kg for t in types}
     vol = {t.key: t.volume_m3 for t in types}
-    total = sum(counts.values())
+    rho = ac.reserve_ratio if reserve_ratio is None else reserve_ratio
+    energy_limit = (1.0 - rho) * ac.battery_kwh
 
     # 枚举所有可行架次装载（类型计数组合），规模 = prod(count+1)，本题 <= 16*9*9*5 级别
     feasible: list[tuple[tuple[int, ...], float, float, int]] = []
@@ -98,41 +109,96 @@ def load_plan(ac: AircraftType, outbound: Segment, inbound: Segment, mass_cap: f
         if m > mass_cap + 1e-9 or v > ac.volume_m3 + 1e-12:
             continue
         e = round_trip_energy(ac, outbound, inbound, m)
-        if e > (1.0 - ac.reserve_ratio) * ac.battery_kwh + 1e-12:
+        if e > energy_limit + 1e-12:
             continue
         feasible.append((combo, m, e, sum(combo)))
     feasible.sort(key=lambda x: (-x[3], x[2]))
 
     # 单箱不可行时（返航余量过大导致连一只最轻箱都装不下），该机型对该服务区不可用
     lightest = min(mass.values()) if mass else 0.0
-    if not feasible or round_trip_energy(ac, outbound, inbound, lightest) > (1.0 - ac.reserve_ratio) * ac.battery_kwh + 1e-12:
+    if not feasible or round_trip_energy(ac, outbound, inbound, lightest) > energy_limit + 1e-12:
         return None, None, None
-
-    best: dict[str, object] = {"n": 10 ** 9, "energy": float("inf"), "plan": None}
 
     target = tuple(counts[k] for k in keys)
 
-    def dfs(remaining: tuple[int, ...], plan: list[tuple[int, ...]], e_acc: float) -> None:
-        if len(plan) >= best["n"]:
-            return
+    @lru_cache(maxsize=None)
+    def solve(remaining: tuple[int, ...]):
         if all(r == 0 for r in remaining):
-            if len(plan) < best["n"] or (len(plan) == best["n"] and e_acc < best["energy"] - 1e-12):
-                best.update(n=len(plan), energy=e_acc, plan=list(plan))
-            return
-        # 下界剪枝
-        max_boxes = max(f[3] for f in feasible)
-        lb = math.ceil(sum(remaining) / max_boxes)
-        if len(plan) + lb > best["n"]:
-            return
+            return 0, 0.0, []
+        best_n = 10 ** 9
+        best_e = float("inf")
+        best_plan = None
         for combo, m, e, nb in feasible:
             if all(combo[i] <= remaining[i] for i in range(len(keys))):
-                if all(combo[i] == 0 for i in range(len(keys))):
-                    continue
-                dfs(tuple(remaining[i] - combo[i] for i in range(len(keys))),
-                    plan + [combo], e_acc + e)
+                next_remaining = tuple(remaining[i] - combo[i] for i in range(len(keys)))
+                sub_n, sub_e, sub_plan = solve(next_remaining)
+                cand_n = 1 + sub_n
+                cand_e = e + sub_e
+                if cand_n < best_n or (cand_n == best_n and cand_e < best_e - 1e-12):
+                    best_n = cand_n
+                    best_e = cand_e
+                    best_plan = [combo] + sub_plan
+        if best_plan is None:
+            return 10 ** 9, float("inf"), None
+        return best_n, best_e, best_plan
 
-    dfs(target, [], 0.0)
-    return best["n"], best["plan"], best["energy"]
+    n, energy, plan = solve(target)
+    return n, plan, energy
+
+
+def mixed_load_plan(aircraft: dict[str, AircraftType], outbound: Segment, inbound: Segment,
+                    counts: dict[str, int], types: list[BoxType], reserve_ratio: float = 0.20):
+    """跨机型精确组批，按架次数、总能耗、总作业时间依次优化。"""
+    keys = [t.key for t in types]
+    mass = {t.key: t.mass_kg for t in types}
+    vol = {t.key: t.volume_m3 for t in types}
+    ranges = [range(counts[k] + 1) for k in keys]
+
+    # option = (机型, 箱型计数组合, 质量, 体积, 能耗, 作业时间)
+    options = []
+    import itertools
+    for g, ac in aircraft.items():
+        energy_limit = (1.0 - reserve_ratio) * ac.battery_kwh
+        for combo in itertools.product(*ranges):
+            n_boxes = sum(combo)
+            if n_boxes == 0:
+                continue
+            m = sum(combo[i] * mass[keys[i]] for i in range(len(keys)))
+            v = sum(combo[i] * vol[keys[i]] for i in range(len(keys)))
+            if m > ac.max_payload_kg + 1e-9 or v > ac.volume_m3 + 1e-12:
+                continue
+            e = round_trip_energy(ac, outbound, inbound, m)
+            if e > energy_limit + 1e-12:
+                continue
+            t = round_trip_time(ac, outbound, inbound, n_boxes)
+            options.append((g, combo, m, v, e, t))
+
+    if not options:
+        return None, None, None, None
+    options.sort(key=lambda x: (-sum(x[1]), x[4], x[5], x[0]))
+    target = tuple(counts[k] for k in keys)
+
+    @lru_cache(maxsize=None)
+    def solve(remaining: tuple[int, ...]):
+        if all(r == 0 for r in remaining):
+            return 0, 0.0, 0.0, []
+        best = None
+        for option in options:
+            combo = option[1]
+            if not all(combo[i] <= remaining[i] for i in range(len(keys))):
+                continue
+            next_remaining = tuple(remaining[i] - combo[i] for i in range(len(keys)))
+            sub_n, sub_e, sub_t, sub_plan = solve(next_remaining)
+            if sub_plan is None:
+                continue
+            candidate = (1 + sub_n, option[4] + sub_e, option[5] + sub_t,
+                         [option] + sub_plan)
+            if best is None or candidate[:3] < best[:3]:
+                best = candidate
+        return best if best is not None else (10 ** 9, float("inf"), float("inf"), None)
+
+    n, energy, total_time, plan = solve(target)
+    return n, plan, energy, total_time
 
 
 def main() -> None:
@@ -173,12 +239,7 @@ def main() -> None:
         for g in "ABC":
             ac = acs[g]
             n, plan, energy = load_plan(ac, o, i, caps[(s, g)], counts, types)
-            # 作业时间：准备 + 往返飞行 + 装载 + 交接
-            per_flight = 0.0
-            for seg in (o, i):
-                per_flight += (seg.climb_m / ac.climb_speed_ms + seg.horizontal_m / ac.cruise_speed_ms
-                               + seg.descent_m / ac.descent_speed_ms)
-            total_time = n * (ac.setup_time_s + per_flight)
+            total_time = sum(round_trip_time(ac, o, i, sum(combo)) for combo in plan)
             summary[(s, g)] = (n, energy, total_time, plan)
             print("  %-6s %-14s %6d %10.4f %10.1f" % (s, g, n, energy, total_time))
 

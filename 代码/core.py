@@ -126,6 +126,21 @@ def load_relay_type() -> dict:
     return dict(zip(keys, r[:len(keys)]))
 
 
+def load_relay_fleet() -> tuple[list[str], int, float]:
+    """返回（中继无人机编号、能源组件库存、等效完全充电时间）。"""
+    wb = openpyxl.load_workbook(os.path.join(DATA_DIR, "中继无人机数据.xlsx"), data_only=True)
+    rows = list(wb["数据"].iter_rows(values_only=True))
+    start = next(i for i, r in enumerate(rows) if r and r[0] == "中继无人机编号")
+    drones: list[str] = []
+    for r in rows[start + 1:]:
+        if not r or not r[0] or not str(r[0]).startswith("R"):
+            break
+        drones.append(str(r[0]))
+    start = next(i for i, r in enumerate(rows) if r and r[0] == "机型编号" and i > start)
+    row = rows[start + 1]
+    return drones, int(row[1]), float(row[2])
+
+
 def load_fleet() -> tuple[list[tuple[str, str]], dict[str, int], dict[str, float]]:
     """返回 (逐架无人机清单, 共享电池库存, 等效完全充电时间)。"""
     wb = openpyxl.load_workbook(os.path.join(DATA_DIR, "运输无人机数据.xlsx"), data_only=True)
@@ -187,10 +202,32 @@ def load_link_params() -> dict:
     wb = openpyxl.load_workbook(os.path.join(DATA_DIR, "通信链路参数.xlsx"), data_only=True)
     rows = list(wb["数据"].iter_rows(values_only=True))
     out: dict[str, float] = {}
+    semantic = {
+        ("传播参数", "f"): "frequency_mhz",
+        ("传播参数", "Lsys"): "system_loss_db",
+        ("传播参数", "Lobs"): "obstacle_loss_db",
+        ("接收参数", "Psens"): "sensitivity_dbm",
+        ("接收参数", "M"): "fade_margin_db",
+        ("运输无人机", "Pt"): "transport_pt_dbm",
+        ("运输无人机", "G"): "transport_gain_dbi",
+        ("中继接入端", "Pt"): "relay_access_pt_dbm",
+        ("中继接入端", "G"): "relay_access_gain_dbi",
+        ("中继回传端", "Pt"): "relay_backhaul_pt_dbm",
+        ("中继回传端", "G"): "relay_backhaul_gain_dbi",
+        ("固定网关 G01", "Pt"): "gateway_pt_dbm",
+        ("固定网关 G01", "G"): "gateway_gain_dbi",
+        ("固定网关 G01", "hG"): "gateway_agl_m",
+    }
     for r in rows:
-        if not r or len(r) < 5 or r[3] is None or r[4] is None:
+        if (not r or len(r) < 5 or r[0] is None or r[3] is None
+                or not isinstance(r[4], (int, float))):
             continue
-        out[str(r[3])] = float(r[4])
+        key = semantic.get((str(r[0]), str(r[3])))
+        if key is not None:
+            out[key] = float(r[4])
+    missing = set(semantic.values()) - set(out)
+    if missing:
+        raise ValueError(f"通信链路参数缺失：{sorted(missing)}")
     return out
 
 
@@ -227,7 +264,8 @@ class Terrain:
         if samples is None:
             di = abs(lat2 - lat1) / abs(self.dlat)
             dj = abs(lon2 - lon1) / abs(self.dlon)
-            samples = max(2, int(math.ceil(max(di, dj))) + 1)
+            # 密采样避免斜向航段漏掉仅从边缘穿过的像元。
+            samples = max(2, int(math.ceil(max(di, dj) * 8.0)) + 2)
         lons = np.linspace(lon1, lon2, samples)
         lats = np.linspace(lat1, lat2, samples)
         ii = np.round((lats - self.lat[0]) / self.dlat).astype(int)
